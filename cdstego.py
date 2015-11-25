@@ -1,6 +1,6 @@
 #!/usr/bin/python2
 
-from sys import stdin, stdout, argv
+from sys import stdin, stdout, stderr, argv
 import array
 import struct
 from hashlib import md5
@@ -44,7 +44,29 @@ def extract_char(cover_chunk):
     return output_char
 # end extract_char --------------------------------------------
 
+# start printerr ----------------------------------------------
+def printerr(err_string):
+    stderr.write("cdstego: "+err_string)
+    stderr.write('\n')
+# end printerr ------------------------------------------------
+
+# start print_help --------------------------------------------
+def print_help(): # just exit telling correct syntax if no command is given:
+    printerr("usage: cdstego.py -embed [file to be embedded]")
+    printerr("       cdstego.py -extract")
+    printerr("cdstego reads cover data from stdin and writes the modulated pcm to stdout.")
+    printerr("examples:")
+    printerr("cdstego -embed my_secret_data.txt < cover_file.pcm > stego_file.pcm")
+    printerr("cdstego -extract < stego_file.pcm > my_extracted_secrets.txt")
+    printerr("cdstego writes status messages to stderr.")
+    exit(0)
+# end print_help -----------------------------------------------
+
 #### MAIN ####
+
+if len(argv) < 2:
+    print_help()
+
 # take password for checking/setting the end marker. ask for it if not given
 if "-p" in argv:
     data_password = argv[(argv.index("-p"))]
@@ -66,6 +88,9 @@ if "-embed" in argv:
     # append end_marker to the end of the data:
     embed_data += end_marker
     
+    # start printing status to stderr:
+    byte_counter = 0
+    stderr.write("cdstego: processed %s bytes of input file" % byte_counter)
     # embed given data to file:
     for i in embed_data:
         input_stream = stdin.read(16)
@@ -73,16 +98,28 @@ if "-embed" in argv:
         output_buffer = embed_char(cover_buffer, i)
         for i in output_buffer:
             stdout.write(struct.pack('<h', i))
+        byte_counter += 1
+        stderr.write("\r")
+        stderr.flush()
+        stderr.write("cdstego: processed %s bytes of input file" % byte_counter)
+
+    # write a newline after counter:
+    stderr.write("\n")
 
     # write the rest of the PCM to output file.
     stdout.write(stdin.read())
+    printerr("finished embedding data and wrote the rest of the input stream without modifications to stdout.")
     exit(0)
 
 # extract mode (reads from stdin and writes to stdout):
 if "-extract" in argv:
     input_stream = stdin.read(16)
     output_buffer = []
-
+    
+    # start printing status to stderr:
+    byte_counter = 0
+    stderr.write("cdstego: analyzed %s bytes of input stream." % byte_counter)
+    
     while input_stream:
         cover_buffer = array.array('h', input_stream)
         newchar = chr(extract_char(cover_buffer))
@@ -95,16 +132,14 @@ if "-extract" in argv:
             stdout.write(struct.pack('c', out_char))
             
             if "".join(output_buffer) == end_marker:
+                stderr.write("\ncdstego: end marker found! exiting.\n")
                 break
 
         input_stream = stdin.read(16)
+        byte_counter += 16
+        stderr.write("\r")
+        stderr.flush()
+        stderr.write("cdstego: analyzed %s bytes of input stream." % byte_counter)
     exit(0)
 
-else: # just exit telling correct syntax if no command is given:
-    print("usage: cdstego.py -embed [file to be embedded]")
-    print("       cdstego.py -extract")
-    print("cdstego reads cover data from stdin and writes the modulated pcm to stdout.")
-    print("examples:")
-    print("cdstego -embed my_secret_data.txt < cover_file.pcm > stego_file.pcm")
-    print("cdstego -extract < stego_file.pcm > my_extracted_secrets.txt")
-    exit(0)
+
